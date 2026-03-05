@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - CarbonWise</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+        body { font-family: 'Nunito', sans-serif; background-color: #F8FAFC; overflow-x: hidden; }
+        [x-cloak] { display: none !important; }
+        .fade-enter-active { transition: all 0.4s ease-out; }
+        .fade-enter-start { opacity: 0; transform: translateY(10px); }
+        .dashboard-wrapper { max-width: 480px; margin: 0 auto; }
+        
+        /* Animasi Toast */
+        .toast-enter { transform: translateY(-50px); opacity: 0; }
+        .toast-show { transform: translateY(0); opacity: 1; }
+    </style>
+</head>
+
+<body x-data="{ 
+    tab: 'input', 
+    showModal: false,
+    showModalListrik: false, 
+    showToast: false,
+    toastMsg: '',
+    toastType: 'success', 
+
+    // --- STATE UTAMA & STORAGE ---
+    totalCO2Header: 0.00, 
+    riwayatKarbon: [], 
+
+    init() {
+        const tersimpan = localStorage.getItem('carbon_total');
+        this.totalCO2Header = parseFloat(tersimpan) || 0;
+
+        const history = localStorage.getItem('carbon_history');
+        this.riwayatKarbon = history ? JSON.parse(history) : [];
+
+        this.$watch('tab', value => {
+            if (value === 'grafik') {
+                this.$nextTick(() => this.renderChart());
+            }
+        });
+    },
+
+        // --- STATE MAKANAN & LISTRIK ---
+        step: 'pilih',
+        makananTerpilih: null,
+        gramManual: '',
+        keranjang: [],
+        sudahKonfirmasi: false, 
+        faktorEmisiMakan: {
+            'DAGING': 2.70, 'AYAM': 0.60, 'IKAN': 0.50, 'TELUR': 0.48, 
+            'NASI': 0.40, 'TAHU': 0.10, 'TEMPE': 0.10, 'SAYUR': 0.04
+        },
+        listrikKwh: '', 
+        antreanListrik: [], 
+
+        get totalLifestyleDisplay() {
+        // 1. Ambil nilai makan dan listrik
+        const makan = parseFloat(this.estimasiMakanOnly) || 0;
+        const listrik = parseFloat(this.estimasiListrikOnly) || 0;
+        
+        // 2. Jumlahkan dan kembalikan sebagai string dengan 2 desimal
+        return (makan + listrik).toFixed(2);
+    },
+
+    // --- STATE TRAVEL ---
+    travelType: 'pergi', 
+    vehicle: 'mobil', 
+    vehiclePulang: 'mobil', 
+    jarakPergi: '',
+    jarakPulang: '',
+    faktorEmisiTravel: {
+        'mobil': 0.19, 'motor': 0.10, 'bus': 1.20, 'jalan': 0
+    },
+
+    // --- FUNGSI ACTION ---
+    tambahKeKeranjang(gram) {
+        let nilai = parseInt(gram);
+        if(nilai > 0 && this.makananTerpilih) {
+            this.keranjang.push({
+                nama: this.makananTerpilih.n,
+                emoji: this.makananTerpilih.i,
+                jumlah: nilai
+            });
+            this.step = 'pilih'; 
+            this.makananTerpilih = null;
+            this.gramManual = '';
+        }
+    },
+
+    hapusItem(index) { this.keranjang.splice(index, 1); },
+
+    tambahListrikKeAntrean() {
+        let nilai = parseInt(this.listrikKwh);
+        if(nilai > 0) {
+            this.antreanListrik.push({ kwh: nilai, id: Date.now() });
+            this.listrikKwh = ''; 
+        }
+    },
+
+    hapusListrik(index) { this.antreanListrik.splice(index, 1); },
+
+    resetInput() {
+        this.step = 'pilih';
+        this.makananTerpilih = null;
+        this.gramManual = '';
+    },
+
+    // --- KALKULASI ---
+    get estimasiMakanOnly() {
+        return this.keranjang.reduce((t, item) => t + (item.jumlah / 100) * (this.faktorEmisiMakan[item.nama] || 0), 0);
+    },
+    get totalKwhTersimpan() {
+        return this.antreanListrik.reduce((sum, item) => sum + (parseInt(item.kwh) || 0), 0);
+    },
+    get estimasiListrikOnly() { return (this.totalKwhTersimpan * 1.05); },
+    get estimasiTravelOnly() {
+        let fPergi = this.faktorEmisiTravel[this.vehicle] || 0;
+        let fPulang = this.faktorEmisiTravel[this.vehiclePulang] || 0;
+        return (fPergi * (parseFloat(this.jarakPergi) || 0)) + (fPulang * (parseFloat(this.jarakPulang) || 0));
+    },
+    get totalSiapSimpan() {
+        return (this.estimasiMakanOnly + this.estimasiListrikOnly + this.estimasiTravelOnly) || 0;
+    },
+
+    // --- SIMPAN & GRAFIK ---
+    simpanAktivitas() {
+        const totalBaru = parseFloat(this.totalSiapSimpan) || 0;
+        if(totalBaru <= 0) {
+            this.showToastMsg('Ups! Belum ada data.', 'error');
+            return;
+        }
+
+        const sekarang = new Date();
+        const dataBaru = {
+            tgl: sekarang.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+            jam: sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            full: sekarang.toLocaleString('id-ID'),
+            nilai: totalBaru.toFixed(2)
+        };
+
+        this.riwayatKarbon.push(dataBaru);
+        localStorage.setItem('carbon_history', JSON.stringify(this.riwayatKarbon));
+
+        let totalLama = parseFloat(this.totalCO2Header) || 0;
+        this.totalCO2Header = parseFloat((totalLama + totalBaru).toFixed(2));
+        localStorage.setItem('carbon_total', this.totalCO2Header);
+
+        this.resetFormSetelahSimpan();
+        this.showToastMsg('Berhasil diakumulasikan!', 'success');
+    },
+
+    renderChart() {
+        const ctx = document.getElementById('myChart');
+        if (!ctx) return;
+        if (window.chartInstance) window.chartInstance.destroy();
+
+        window.chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: this.riwayatKarbon.map(d => d.tgl),
+                datasets: [{
+                    label: 'KG CO2',
+                    data: this.riwayatKarbon.map(d => d.nilai),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 5,
+                    pointBackgroundColor: '#10b981'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (i) => this.riwayatKarbon[i[0].dataIndex].full,
+                            label: (i) => ` Emisi: ${i.formattedValue} kg`
+                        }
+                    }
+                }
+            }
+        });
+    },
+
+    // --- PERBAIKAN: HAPUS SEMUA DATA ---
+    hapusRiwayatGrafik() {
+        if(confirm('Hapus semua riwayat dan reset total emisi?')) {
+            // 1. Reset state agar tampilan layar langsung berubah
+            this.riwayatKarbon = [];
+            this.totalCO2Header = 0.00;
+
+            // 2. Hapus permanen dari localStorage
+            localStorage.removeItem('carbon_history');
+            localStorage.removeItem('carbon_total');
+            
+            // 3. Matikan grafik secara instan
+            if (window.chartInstance) {
+                window.chartInstance.destroy();
+                window.chartInstance = null;
+            }
+            
+            this.showToastMsg('Semua data telah dibersihkan!', 'success');
+        }
+    },
+
+    // Helpers
+    showToastMsg(msg, type) {
+        this.toastMsg = msg;
+        this.toastType = type;
+        this.showToast = true;
+        setTimeout(() => this.showToast = false, 3000);
+    },
+
+    resetFormSetelahSimpan() {
+        this.keranjang = [];
+        this.antreanListrik = [];
+        this.jarakPergi = '';
+        this.jarakPulang = '';
+        this.listrikKwh = '';
+    }
+}">
+
+    <div x-show="showToast" 
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 -translate-y-10"
+        x-transition:enter-end="opacity-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100 translate-y-0"
+        x-transition:leave-end="opacity-0 -translate-y-10"
+        class="fixed top-6 left-1/2 -translate-x-1/2 z-[200] w-[80%] max-w-[300px]" 
+        x-cloak>
+        
+        <div :class="toastType === 'error' ? 'bg-red-500 shadow-red-200' : 'bg-emerald-500 shadow-emerald-200'"
+            class="text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 justify-center transition-colors duration-300">
+            
+            <div class="bg-white/20 p-1.5 rounded-lg">
+                <i class="fas" :class="toastType === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'"></i>
+            </div>
+            
+            <span class="text-[10px] font-black uppercase tracking-widest" x-text="toastMsg"></span>
+        </div>
+    </div>
+
+    <header class="bg-[#10B981] pt-7 pb-20 px-6 rounded-b-[3rem] shadow-md relative">
+        <div class="max-w-5xl mx-auto flex justify-between items-center text-white">
+            <a href="index.html" class="flex items-center gap-3.5 hover:opacity-80 transition-opacity">
+                <div class="bg-white/20 p-2.5 rounded-xl backdrop-blur-md border border-white/10 shadow-sm">
+                    <i class="fas fa-leaf text-white text-lg"></i> 
+                </div>
+                <div>
+                    <h1 class="font-black tracking-tight text-xl leading-none">CarbonWise</h1> 
+                    <p class="text-[9px] opacity-75 font-bold uppercase tracking-widest mt-1">Dashboard</p>
+                </div>
+            </a>
+            
+            <div class="bg-white/10 px-5 py-2.5 rounded-[1.8rem] backdrop-blur-md border border-white/10 text-right">
+                <p class="text-[8px] uppercase font-black opacity-60 leading-none mb-1.5 tracking-wider">Total CO2</p>
+                <p class="font-black text-2xl leading-none">
+                    <span x-text="totalCO2Header.toFixed(2)"></span> <span class="text-[10px] opacity-80 ml-0.5">KG</span>
+                </p>
+            </div>
+        </div>
+
+        <div class="absolute -bottom-7 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-white rounded-[2.5rem] shadow-xl p-1.5 flex gap-1 border border-slate-50">
+            <button @click="tab = 'input'" :class="tab === 'input' ? 'bg-[#10B981] text-white shadow-md' : 'text-slate-400'" class="flex-1 py-3.5 rounded-[2rem] flex flex-col items-center gap-1 transition-all uppercase font-black text-[8px]">
+                <i class="fas fa-bolt text-sm"></i> Input
+            </button>
+            <button @click="tab = 'travel'" :class="tab === 'travel' ? 'bg-[#10B981] text-white shadow-md' : 'text-slate-400'" class="flex-1 py-3.5 rounded-[2rem] flex flex-col items-center gap-1 transition-all uppercase font-black text-[8px]">
+                <i class="fas fa-car text-sm"></i> Travel
+            </button>
+            <button @click="tab = 'grafik'" :class="tab === 'grafik' ? 'bg-[#10B981] text-white shadow-md' : 'text-slate-400'" class="flex-1 py-3.5 rounded-[2rem] flex flex-col items-center gap-1 transition-all uppercase font-black text-[8px]">
+                <i class="fas fa-chart-line text-sm"></i> Grafik
+            </button>
+        </div>
+    </header>
+
+    <main class="mt-16 px-6 pb-16 dashboard-wrapper">
+        <div x-show="tab === 'input'" x-transition:enter="fade-enter-active">
+            <div class="bg-white rounded-[3rem] shadow-lg p-8 border border-slate-50">
+                <h2 class="text-center font-black text-slate-700 tracking-[0.2em] uppercase mb-8 text-[11px]">Estimasi Gaya Hidup</h2>
+                
+                <div class="space-y-4">
+                    <div class="relative">
+                        <template x-if="totalKwhTersimpan > 0">
+                            <div class="absolute -top-3 -right-2 z-30 
+                                        bg-gradient-to-tr from-orange-500 to-amber-400 
+                                        text-white text-[9px] font-black 
+                                        px-2.5 py-1 rounded-full 
+                                        flex items-center justify-center 
+                                        shadow-[0_4px_10px_rgba(249,115,22,0.4)] 
+                                        border-2 border-white 
+                                        animate-pulse 
+                                        tracking-tighter">
+                                <i class="fas fa-bolt mr-1 text-[7px]"></i>
+                                <span x-text="totalKwhTersimpan + ' KWH'"></span>
+                            </div>
+                        </template>
+
+                        <button @click="showModalListrik = true" 
+                                class="w-full flex items-center justify-between p-5 rounded-[2rem] border-2 border-orange-200 bg-orange-50/50 group transition-all hover:bg-orange-100 active:scale-[0.98]">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-orange-500 border border-orange-100 group-hover:rotate-12 transition-transform">
+                                    <i class="fas fa-bolt"></i>
+                                </div>
+                                
+                                <div class="text-left">
+                                    <span class="font-black text-slate-700 uppercase tracking-widest text-[10px] block">Energi Rumah</span>
+                                    <span class="text-[8px] font-bold text-orange-400 uppercase tracking-tight">Listrik</span>
+                                </div>
+                            </div>
+
+                            <i class="fas fa-chevron-right text-orange-300 group-hover:translate-x-1 transition-transform"></i>
+                        </button>
+                    </div>  
+
+                    <div class="relative">
+                      <template x-if="keranjang.length > 0">
+                            <div class="absolute -top-3 -right-2 z-30 
+                                        bg-gradient-to-tr from-purple-600 to-indigo-500 
+                                        text-white text-[9px] font-black 
+                                        px-3 py-1 rounded-full 
+                                        flex items-center justify-center 
+                                        shadow-[0_4px_12px_rgba(147,51,234,0.4)] 
+                                        border-2 border-white 
+                                        animate-pulse 
+                                        tracking-widest uppercase">
+                                <i class="fas fa-shopping-basket mr-1.5 text-[8px]"></i>
+                                <span x-text="keranjang.length + (keranjang.length > 1 ? ' ITEMS' : ' ITEM')"></span>
+                            </div>
+                        </template>
+
+                        <button @click="showModal = true" class="w-full flex items-center justify-between p-5 rounded-[2rem] border-2 border-purple-200 bg-purple-50/50 hover:bg-purple-100 transition-all group">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-purple-500 border border-purple-100"><i class="fas fa-utensils"></i></div>
+                                <span class="font-black text-slate-700 uppercase tracking-widest text-[10px]">Konsumsi Makan</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-purple-300 group-hover:translate-x-1 transition-transform"></i>
+                        </button>
+                    </div>
+
+                   <div class="mt-8 p-8 rounded-[2.5rem] border-2 border-dashed border-emerald-100 bg-emerald-50/20 text-center">
+                        <p class="text-[8px] font-black text-emerald-600 uppercase tracking-[0.3em] mb-2">Total Estimasi Lifestyle</p>
+                        <div class="flex items-baseline justify-center gap-1.5">
+                            <span class="text-6xl font-black text-slate-800" 
+                                x-text="totalLifestyleDisplay">
+                                0.00
+                            </span>
+                            <span class="text-slate-400 font-bold text-xs uppercase">kg co2</span>
+                        </div>
+                    </div>
+
+                    <button @click="simpanAktivitas()" 
+                            class="w-full mt-6 bg-[#10B981] hover:bg-[#0da673] text-white font-black py-5 rounded-[2.2rem] shadow-xl shadow-emerald-100/50 transition-all active:scale-[0.98] flex items-center justify-center gap-3 uppercase tracking-[0.2em] text-[11px] border-b-4 border-emerald-700/30">
+                        <i class="fas fa-cloud-upload-alt text-base"></i>
+                        Simpan Aktivitas
+                    </button>
+                </div>
+            </div>
+        </div>
+
+                    <div x-show="showModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm" x-cloak>
+                <div @click.away="showModal = false; resetInput()" class="bg-white w-[90%] max-w-sm rounded-[3rem] p-8 shadow-2xl relative min-h-[550px] flex flex-col overflow-hidden text-slate-800">
+                    
+                    <div x-show="step === 'pilih'" class="flex-1 flex flex-col">
+                        <div class="text-center mb-6">
+                            <h2 class="text-xl font-black tracking-tight text-slate-800">Pilih Nutrisi</h2>
+                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Pilih jenis makanan di bawah</p>
+                        </div>
+
+                        <div class="grid grid-cols-4 gap-3 mb-6">
+                            <template x-for="item in [{n: 'DAGING', i: '🥩'}, {n: 'AYAM', i: '🍗'}, {n: 'IKAN', i: '🐟'}, {n: 'SAYUR', i: '🥗'}, {n: 'TAHU', i: '🟦'}, {n: 'TEMPE', i: '🍫'}, {n: 'NASI', i: '🍚'}, {n: 'TELUR', i: '🥚'}]">
+                                <button @click="makananTerpilih = item; step = 'gram'" class="flex flex-col items-center gap-2 group">
+                                    <div class="w-14 h-14 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center text-xl group-hover:bg-emerald-50 group-hover:border-emerald-200 transition-all shadow-sm text-slate-700">
+                                        <span x-text="item.i"></span>
+                                    </div>
+                                    <span class="text-[7px] font-black text-slate-400 group-hover:text-emerald-600 tracking-tighter" x-text="item.n"></span>
+                                </button>
+                            </template>
+                        </div>
+
+                        <div class="flex-1 flex flex-col">
+                            <p class="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-3">Makanan Terinput:</p>
+                            <div class="flex-1 overflow-y-auto space-y-2 pr-2">
+                                <template x-if="keranjang.length === 0">
+                                    <div class="h-full flex flex-col items-center justify-center opacity-20">
+                                        <i class="fas fa-shopping-basket text-2xl mb-1 text-slate-400"></i>
+                                        <p class="text-[7px] font-bold uppercase text-slate-400">Belum ada data</p>
+                                    </div>
+                                </template>
+                                <template x-for="(item, index) in keranjang" :key="index">
+                                    <div class="flex items-center justify-between bg-emerald-50 border border-emerald-100 px-4 py-2.5 rounded-2xl">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs" x-text="item.emoji"></span>
+                                            <span class="text-[10px] font-bold text-emerald-800" x-text="item.nama"></span>
+                                            <span class="text-[9px] font-black text-emerald-500" x-text="item.jumlah + 'g'"></span>
+                                        </div>
+                                        <button @click="hapusItem(index)" class="text-emerald-300 hover:text-red-500"><i class="fas fa-times-circle"></i></button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                       <button @click="sudahKonfirmasi = true; showModal = false" 
+                                class="w-full mt-6 bg-[#10B981] hover:bg-[#0da673] text-white font-black py-4 rounded-2xl uppercase text-[10px] tracking-widest disabled:opacity-30 transition-all active:scale-95 shadow-lg shadow-emerald-100 border-b-4 border-emerald-700/30 flex items-center justify-center gap-2" 
+                                :disabled="keranjang.length === 0">
+                            <i class="fas fa-check-circle"></i>
+                            Konfirmasi & Selesai
+                        </button>
+                    </div>
+
+                    <div x-show="step === 'gram'" class="flex-1 flex flex-col items-center">
+                        <div class="text-center mb-4">
+                            <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tighter" x-text="makananTerpilih?.n"></h2>
+                            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Pilih atau Tambah Porsi</p>
+                        </div>
+
+                        <div class="flex items-baseline gap-2 mb-8">
+                            <span class="text-7xl font-black text-[#10B981]" x-text="gramManual || 0"></span>
+                            <span class="text-slate-400 font-black text-xl uppercase">Gram</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 w-full mb-8">
+                            <template x-for="g in [100, 200, 300, 500]">
+                                <button @click="gramManual = (parseInt(gramManual) || 0) + g" 
+                                        class="py-5 bg-slate-50 border border-slate-100 rounded-[2rem] flex flex-col items-center justify-center hover:bg-emerald-50 hover:border-emerald-200 transition-all group">
+                                    <span class="text-lg font-black text-slate-700 group-hover:text-emerald-600" x-text="'+' + g"></span>
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase">Gram</span>
+                                </button>
+                            </template>
+                        </div>
+
+                        <div class="w-full mb-10">
+                            <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 px-4 text-center">Atau Input Manual:</p>
+                            <div class="relative">
+                                <input type="number" 
+                                    x-model="gramManual" 
+                                    @input="if(gramManual > 20000) gramManual = 20000"
+                                    placeholder="0" 
+                                    class="w-full bg-slate-50 border border-slate-100 rounded-[2rem] py-5 px-8 text-center font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-200 focus:bg-white transition-all">
+                                <span class="absolute right-8 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase">Gram</span>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-4 w-full mt-auto">
+                            <button @click="step = 'pilih'; gramManual = ''" 
+                                    class="flex-1 bg-white border-2 border-red-50 hover:bg-red-50 text-red-400 font-black py-5 rounded-[2.5rem] text-[11px] uppercase tracking-[0.2em] transition-all">
+                                Kembali
+                            </button>
+
+                            <button @click="if(gramManual > 0) { tambahKeKeranjang(gramManual); }" 
+                                    :disabled="!gramManual || gramManual <= 0" 
+                                    class="flex-1 font-black py-5 rounded-[2.5rem] text-[11px] uppercase tracking-[0.2em] transition-all duration-300"
+                                    :class="gramManual > 0 
+                                        ? 'bg-[#10B981] text-white shadow-lg shadow-emerald-200/50 hover:bg-[#0da673] active:scale-95' 
+                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'">
+                                Tambahkan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+   <div x-show="showModalListrik" class="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm" x-cloak>
+        <div @click.away="showModalListrik = false" class="bg-white w-[90%] max-w-sm rounded-[3rem] p-8 shadow-2xl flex flex-col border border-orange-100 max-h-[90vh] overflow-hidden">
+            
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tighter">Energi Rumah</h2>
+            </div>
+
+            <div class="flex-1 overflow-y-auto mb-6 space-y-2 pr-2 custom-scrollbar">
+                <template x-for="(item, index) in antreanListrik" :key="item.id">
+                    <div class="flex items-center justify-between bg-slate-50 p-4 rounded-[1.5rem] border border-slate-100">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-500 text-xs">
+                                <i class="fas fa-bolt"></i>
+                            </div>
+                            <span class="font-bold text-slate-700 text-sm" x-text="item.kwh + ' KWh'"></span>
+                        </div>
+                        <button @click="hapusListrik(index)" class="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-full transition-colors">
+                            <i class="fas fa-trash-alt text-xs"></i>
+                        </button>
+                    </div>
+                </template>
+                
+                <template x-if="antreanListrik.length === 0">
+                    <div class="text-center py-8 opacity-40">
+                        <i class="fas fa-plug text-4xl mb-2"></i>
+                        <p class="text-[10px] font-bold uppercase tracking-widest">Belum ada input</p>
+                    </div>
+                </template>
+            </div>
+
+            <div class="bg-slate-50 rounded-[2.5rem] p-4 border border-slate-100 mb-6">
+                <input type="number" 
+                    x-model="listrikKwh" 
+                    @input="if(listrikKwh > 10000) { listrikKwh = 10000; }"
+                    placeholder="Masukkan KWh..." 
+                    class="w-full bg-transparent text-center font-black text-2xl text-orange-500 outline-none">
+                <p class="text-center text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2">Maksimal input 10.000 KWh</p>
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <button @click="tambahListrikKeAntrean()" 
+                        :disabled="!listrikKwh"
+                        class="w-full py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest bg-orange-500 text-white shadow-lg shadow-orange-200 active:scale-95 transition-all disabled:opacity-50">
+                    Tambah Ke Antrean
+                </button>
+            
+                <button @click="showModalListrik = false" 
+                        class="w-full py-5 rounded-[2.2rem] font-black text-[11px] uppercase tracking-[0.2em] bg-[#10B981] text-white shadow-lg shadow-emerald-100 hover:bg-[#0da673] active:scale-95 transition-all border-b-4 border-emerald-700/20">
+                    <i class="fas fa-check-circle mr-2"></i>
+                    Selesai & Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+
+    </div><div x-show="tab === 'travel'" 
+        class="dashboard-wrapper !mt-0 !pt-0 pb-20" 
+        x-transition:enter="fade-enter-active" 
+        x-cloak>
+
+        <div class="max-w-md mx-auto px-4 -mt-16"> 
+            <div class="bg-white rounded-[3rem] shadow-lg p-8 border border-slate-50 text-center relative">
+                
+                <h2 class="font-black text-slate-800 text-lg uppercase tracking-tighter">Input Perjalanan</h2>
+                <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1 mb-6">Hitung Emisi Karbon Kendaraanmu</p>
+
+                <div class="bg-slate-100 p-1.5 rounded-[2rem] flex gap-1 mb-8">
+                    <button @click="travelType = 'pergi'" 
+                            :class="travelType === 'pergi' ? 'bg-white text-emerald-500 shadow-sm' : 'text-slate-400'"
+                            class="flex-1 py-3 rounded-[1.8rem] text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2">
+                        <i class="fas fa-plane-departure"></i> Pergi
+                    </button>
+                    <button @click="travelType = 'pulang'" 
+                            :class="travelType === 'pulang' ? 'bg-white text-emerald-500 shadow-sm' : 'text-slate-400'"
+                            class="flex-1 py-3 rounded-[1.8rem] text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2">
+                        <i class="fas fa-plane-arrival"></i> Pulang
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-4 gap-3 mb-8">
+                    <template x-for="v in [{id:'mobil',n:'MOBIL',i:'fa-car'},{id:'motor',n:'MOTOR',i:'fa-motorcycle'},{id:'bus',n:'BUS',i:'fa-bus'},{id:'jalan',n:'JALAN',i:'fa-walking'}]">
+                        <button @click="travelType === 'pergi' ? vehicle = v.id : vehiclePulang = v.id" class="flex flex-col items-center gap-2">
+                            <div :class="(travelType === 'pergi' ? vehicle : vehiclePulang) === v.id ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-100' : 'bg-slate-50 border-slate-100'"
+                                class="w-14 h-14 rounded-2xl border flex items-center justify-center text-xl transition-all relative">
+                                <i class="fas text-slate-400" :class="[v.i, (travelType === 'pergi' ? vehicle : vehiclePulang) === v.id ? 'text-emerald-500' : '']"></i>
+                                <template x-if="(travelType === 'pergi' ? vehicle : vehiclePulang) === v.id">
+                                    <div class="absolute -top-1 -right-1 bg-emerald-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                                        <i class="fas fa-check"></i>
+                                    </div>
+                                </template>
+                            </div>
+                            <span class="text-[8px] font-black tracking-tighter" :class="(travelType === 'pergi' ? vehicle : vehiclePulang) === v.id ? 'text-emerald-600' : 'text-slate-400'" x-text="v.n"></span>
+                        </button>
+                    </template>
+                </div>
+
+                <div class="bg-slate-50/50 border border-slate-100 rounded-[2.5rem] p-8 mb-8 relative">
+                    <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                        Jarak <span x-text="travelType === 'pergi' ? 'Keberangkatan' : 'Kepulangan'"></span> (KM)
+                    </p>
+                    <div class="flex items-center justify-center gap-4">
+                        <template x-if="travelType === 'pergi'">
+                            <input type="number" x-model="jarakPergi" placeholder="0.0" 
+                                @input="if(jarakPergi > 2000) jarakPergi = 2000"
+                                class="bg-transparent text-5xl font-black text-slate-700 w-full text-center outline-none placeholder:text-slate-200">
+                        </template>
+                        <template x-if="travelType === 'pulang'">
+                            <input type="number" x-model="jarakPulang" placeholder="0.0" 
+                                @input="if(jarakPulang > 2000) jarakPulang = 2000"
+                                class="bg-transparent text-5xl font-black text-slate-700 w-full text-center outline-none placeholder:text-slate-200">
+                        </template>
+                        <span class="text-xl font-black text-slate-300 absolute right-10">KM</span>
+                    </div>
+                </div>
+
+                <div class="bg-[#0F172A] rounded-[2.5rem] p-8 mb-6 text-left relative overflow-hidden shadow-2xl">
+                    <div class="relative z-10">
+                        <p class="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-2">
+                            Total Estimasi Emisi (Pergi + Pulang)
+                        </p>
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-4xl font-black transition-all duration-300" 
+                                :class="parseFloat(estimasiTravelOnly) > 0 ? 'text-white' : 'text-slate-500'"
+                                x-text="estimasiTravelOnly">
+                            </span>
+                            <span class="text-slate-400 font-bold text-xs uppercase tracking-widest">KG CO2</span>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-white/5 rounded-full"></div>
+                </div>
+
+                <button @click="simpanAktivitas()"   
+                    class="w-full bg-[#10B981] hover:bg-[#0da673] disabled:cursor-not-allowed text-white font-black py-5 rounded-[2.2rem] shadow-xl shadow-emerald-100 transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-widest text-[11px] border-b-4 border-emerald-700/30">
+                    <i class="fas fa-save"></i>
+                    Simpan Perjalanan
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <template x-if="tab === 'grafik'">
+        <div class="max-w-md mx-auto px-4 -mt-16" x-transition>
+            <div class="bg-white rounded-[3rem] shadow-xl p-8 border border-gray-50 flex flex-col min-h-[480px]">
+                
+                <div class="text-center mb-6">
+                    <h2 class="font-black text-gray-800 text-lg uppercase tracking-tight">Analisis Karbon</h2>
+                    <div class="h-1 w-10 bg-green-500 mx-auto mt-2 rounded-full"></div>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-3">Pantau Jejak Emisimu Di Sini</p>
+                </div>
+
+                <div class="flex-grow relative h-64 w-full">
+                    <template x-if="riwayatKarbon.length === 0">
+                        <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-300">
+                            <p class="text-[10px] font-black uppercase tracking-widest">Belum Ada Data</p>
+                        </div>
+                    </template>
+                    <canvas id="myChart"></canvas>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mt-8">
+                    <button @click="hapusRiwayatGrafik()" 
+                        class="flex-1 py-4 bg-slate-50 text-slate-400 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition active:scale-95">
+                        🗑️ Hapus Semua Data
+                    </button>
+                    <button @click="window.print()" 
+                        class="py-4 bg-slate-900 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest shadow-lg">
+                        Cetak
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+</body>
+</html>
