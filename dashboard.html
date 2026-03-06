@@ -4,16 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - CarbonWise</title>
+
+    <script>
+        (function() {
+            const isMaintenance = true; // Ubah ke false jika ingin buka dashboard
+            if (isMaintenance) {
+                // Sembunyikan konten agar user tidak melihat sisa-sisa dashboard saat redirect
+                document.documentElement.style.display = 'none';
+                window.location.href = "maintenance.html";
+            }
+        })();
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
-        body { font-family: 'Nunito', sans-serif; background-color: #F8FAFC; overflow-x: hidden; }
+        
+        body { 
+            font-family: 'Nunito', sans-serif; 
+            background-color: #F8FAFC; 
+            overflow-x: hidden; 
+        }
+        
         [x-cloak] { display: none !important; }
+        
         .fade-enter-active { transition: all 0.4s ease-out; }
         .fade-enter-start { opacity: 0; transform: translateY(10px); }
+        
         .dashboard-wrapper { max-width: 480px; margin: 0 auto; }
         
         /* Animasi Toast */
