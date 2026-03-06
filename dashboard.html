@@ -7,7 +7,7 @@
 
     <script>
         (function() {
-            const isMaintenance = true; // Ubah ke false jika ingin buka dashboard
+            const isMaintenance = false; // Ubah ke false jika ingin buka dashboard
             if (isMaintenance) {
                 // Sembunyikan konten agar user tidak melihat sisa-sisa dashboard saat redirect
                 document.documentElement.style.display = 'none';
@@ -136,24 +136,35 @@
 
     // --- KALKULASI ---
     get estimasiMakanOnly() {
-        return this.keranjang.reduce((t, item) => t + (item.jumlah / 100) * (this.faktorEmisiMakan[item.nama] || 0), 0);
+        let total = this.keranjang.reduce((t, item) => t + (item.jumlah / 100) * (this.faktorEmisiMakan[item.nama] || 0), 0);
+        return parseFloat(total.toFixed(2));
     },
+
     get totalKwhTersimpan() {
         return this.antreanListrik.reduce((sum, item) => sum + (parseInt(item.kwh) || 0), 0);
     },
-    get estimasiListrikOnly() { return (this.totalKwhTersimpan * 1.05); },
+
+    get estimasiListrikOnly() { 
+        let total = (this.totalKwhTersimpan * 1.05);
+        return parseFloat(total.toFixed(2)); 
+    },
+
     get estimasiTravelOnly() {
         let fPergi = this.faktorEmisiTravel[this.vehicle] || 0;
         let fPulang = this.faktorEmisiTravel[this.vehiclePulang] || 0;
-        return (fPergi * (parseFloat(this.jarakPergi) || 0)) + (fPulang * (parseFloat(this.jarakPulang) || 0));
+        let total = (fPergi * (parseFloat(this.jarakPergi) || 0)) + (fPulang * (parseFloat(this.jarakPulang) || 0));
+        return parseFloat(total.toFixed(2));
     },
+
     get totalSiapSimpan() {
-        return (this.estimasiMakanOnly + this.estimasiListrikOnly + this.estimasiTravelOnly) || 0;
+        // Penjumlahan akhir, hasilnya dipastikan 2 digit
+        let total = (this.estimasiMakanOnly + this.estimasiListrikOnly + this.estimasiTravelOnly);
+        return parseFloat(total.toFixed(2));
     },
 
     // --- SIMPAN & GRAFIK ---
     simpanAktivitas() {
-        const totalBaru = parseFloat(this.totalSiapSimpan) || 0;
+        const totalBaru = this.totalSiapSimpan;
         if(totalBaru <= 0) {
             this.showToastMsg('Ups! Belum ada data.', 'error');
             return;
@@ -164,7 +175,7 @@
             tgl: sekarang.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
             jam: sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
             full: sekarang.toLocaleString('id-ID'),
-            nilai: totalBaru.toFixed(2)
+            nilai: totalBaru.toFixed(2) // Simpan sebagai string 2 digit untuk riwayat
         };
 
         this.riwayatKarbon.push(dataBaru);
@@ -176,6 +187,9 @@
 
         this.resetFormSetelahSimpan();
         this.showToastMsg('Berhasil diakumulasikan!', 'success');
+        
+        // Otomatis pindah ke tab grafik setelah simpan
+        this.tab = 'grafik';
     },
 
     renderChart() {
@@ -215,25 +229,26 @@
         });
     },
 
-    // --- PERBAIKAN: HAPUS SEMUA DATA ---
+        // Tambahkan showModalKonfirmasi: false ke dalam x-data kamu
     hapusRiwayatGrafik() {
-        if(confirm('Hapus semua riwayat dan reset total emisi?')) {
-            // 1. Reset state agar tampilan layar langsung berubah
-            this.riwayatKarbon = [];
-            this.totalCO2Header = 0.00;
+        this.showModalKonfirmasi = true; // Cukup buka modal, tidak perlu confirm()
+    },
 
-            // 2. Hapus permanen dari localStorage
-            localStorage.removeItem('carbon_history');
-            localStorage.removeItem('carbon_total');
-            
-            // 3. Matikan grafik secara instan
-            if (window.chartInstance) {
-                window.chartInstance.destroy();
-                window.chartInstance = null;
-            }
-            
-            this.showToastMsg('Semua data telah dibersihkan!', 'success');
+    // Tambahkan fungsi eksekusi yang sebenarnya
+    eksekusiHapus() {
+        this.riwayatKarbon = [];
+        this.totalCO2Header = 0.00;
+
+        localStorage.removeItem('carbon_history');
+        localStorage.removeItem('carbon_total');
+        
+        if (window.chartInstance) {
+            window.chartInstance.destroy();
+            window.chartInstance = null;
         }
+        
+        this.showToastMsg('Semua data telah dibersihkan!', 'success');
+        this.showModalKonfirmasi = false; // Tutup modal setelah selesai
     },
 
     // Helpers
@@ -241,7 +256,7 @@
         this.toastMsg = msg;
         this.toastType = type;
         this.showToast = true;
-        setTimeout(() => this.showToast = false, 3000);
+        setTimeout(() => this.showToast = false, 1500);
     },
 
     resetFormSetelahSimpan() {
@@ -658,17 +673,41 @@
 
                 <div class="grid grid-cols-2 gap-3 mt-8">
                     <button @click="hapusRiwayatGrafik()" 
-                        class="flex-1 py-4 bg-slate-50 text-slate-400 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition active:scale-95">
-                        🗑️ Hapus Semua Data
+                        class="flex-1 py-4 bg-red-50 text-red-500 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition active:scale-95">
+                        <i class="fas fa-trash-alt mr-2"></i> Hapus Semua Data
                     </button>
-                    <button @click="window.print()" 
-                        class="py-4 bg-slate-900 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest shadow-lg">
-                        Cetak
-                    </button>
+
+                    
+                </div>
                 </div>
             </div>
         </div>
     </template>
+
+    <div x-show="showModalKonfirmasi" 
+        x-cloak
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+        
+        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full text-center shadow-2xl">
+            <div class="flex justify-center mb-6">
+                <div class="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-5xl">⚠️</div>
+            </div>
+            
+            <h2 class="text-2xl font-black text-slate-800 mb-2">Hapus Riwayat?</h2>
+            <p class="text-slate-500 mb-8 text-sm font-medium tracking-tight">DATA INI TIDAK BISA DIKEMBALIKAN LHO.</p>
+            
+            <div class="flex flex-col gap-3">
+                <button @click="eksekusiHapus()" 
+                        class="w-full py-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-2xl transition-all active:scale-95">
+                    YA, HAPUS SEKARANG
+                </button>
+                <button @click="showModalKonfirmasi = false" 
+                        class="w-full py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition-all active:scale-95">
+                    BATAL
+                </button>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>
