@@ -33,27 +33,71 @@
     <div class="fixed -top-20 -right-20 w-64 h-64 md:w-[500px] md:h-[500px] bg-emerald-100 rounded-full blob animate-float pointer-events-none"></div>
     <div class="fixed top-1/2 -left-20 w-48 h-48 md:w-[400px] md:h-[400px] bg-blue-100 rounded-full blob animate-float pointer-events-none" style="animation-delay: 2s;"></div>
 
-    <nav x-data="{ open: false }" class="fixed w-full z-50 bg-emerald-500/80 backdrop-blur-xl border-b border-white/10 shadow-sm">
-        <div class="max-w-7xl mx-auto px-6 md:px-12 py-4 flex justify-between items-center">
+    <nav x-data="{ 
+        open: false, 
+        activeSection: 'dampak' 
+    }" 
+    x-init="window.addEventListener('scroll', () => {
+        let sections = ['dampak', 'edukasi', 'tentang'];
+        for(let section of sections) {
+            let el = document.getElementById(section);
+            if (el) {
+                let rect = el.getBoundingClientRect();
+                // Mendeteksi bagian mana yang sedang aktif di layar
+                if(rect.top >= -100 && rect.top <= 300) { activeSection = section; }
+            }
+        }
+    })"
+    class="fixed w-full z-50 bg-emerald-500/80 backdrop-blur-xl border-b border-white/10 shadow-sm transition-all duration-300">
+        
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <div class="bg-white p-2 rounded-xl text-emerald-600 shadow-sm"><i class="fas fa-leaf"></i></div>
                 <span class="font-black text-white tracking-tighter text-xl cursor-default">CarbonWise</span>
             </div>
-            <div class="hidden md:flex gap-8 text-white/90 text-sm font-bold uppercase tracking-widest">
-                <a href="#dampak" class="hover:text-white transition-colors">Dampak</a>
-                <a href="#edukasi" class="hover:text-white transition-colors">Edukasi</a>
-                <a href="#tentang" class="hover:text-white transition-colors">Tentang</a>
+
+            <div class="hidden md:flex gap-2 text-white text-xs font-bold uppercase tracking-widest">
+                <template x-for="link in [
+                    { id: 'dampak', name: 'Dampak' },
+                    { id: 'edukasi', name: 'Edukasi' },
+                    { id: 'tentang', name: 'Tentang' }
+                ]">
+                    <a :href="'#' + link.id" 
+                    class="px-6 py-2.5 rounded-full transition-all duration-300 border-2"
+                    :class="activeSection === link.id ? 'border-white bg-white/20' : 'border-transparent hover:border-white/30'"
+                    @click="activeSection = link.id">
+                        <span x-text="link.name"></span>
+                    </a>
+                </template>
             </div>
+
             <div class="md:hidden">
                 <button @click="open = !open" class="text-white focus:outline-none p-2">
-                    <i class="fas" :class="open ? 'fa-times text-xl' : 'fa-ellipsis-v text-xl'"></i>
+                    <i class="fas" :class="open ? 'fa-times text-xl' : 'fa-bars text-xl'"></i>
                 </button>
             </div>
         </div>
-        <div x-show="open" x-cloak class="md:hidden bg-emerald-600 border-t border-white/10 px-6 py-6 space-y-4 shadow-xl">
-            <a href="#dampak" @click="open = false" class="block text-white font-bold uppercase tracking-widest text-xs">Dampak</a>
-            <a href="#edukasi" @click="open = false" class="block text-white font-bold uppercase tracking-widest text-xs">Edukasi</a>
-            <a href="#tentang" @click="open = false" class="block text-white font-bold uppercase tracking-widest text-xs">Tentang Kami</a>
+
+       <div x-show="open" x-cloak 
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0 transform -translate-y-4"
+            x-transition:enter-end="opacity-100 transform translate-y-0"
+            class="md:hidden absolute top-20 left-0 w-full px-6 z-40">
+            
+            <div class="bg-emerald-600 rounded-[2rem] p-6 shadow-2xl border border-white/20 flex flex-col items-center gap-4">
+                <template x-for="link in [
+                    { id: 'dampak', name: 'Dampak' },
+                    { id: 'edukasi', name: 'Edukasi' },
+                    { id: 'tentang', name: 'Tentang Kami' }
+                ]">
+                    <a :href="'#' + link.id" 
+                    @click="open = false; activeSection = link.id" 
+                    class="w-full max-w-[280px] text-white font-bold uppercase tracking-widest text-sm border-2 border-white/20 px-6 py-4 rounded-full text-center transition-all duration-300"
+                    :class="activeSection === link.id ? 'bg-white/20 border-white' : 'hover:bg-white/10'">
+                    <span x-text="link.name"></span>
+                    </a>
+                </template>
+            </div>
         </div>
     </nav>
 
@@ -88,51 +132,7 @@
         </div>
     </section>
 
-    <section id="edukasi" class="py-24 px-6 md:px-24 bg-white/30">
-        <div class="max-w-4xl mx-auto" x-data="{ active: null }">
-            <div class="text-center mb-12">
-                <span class="text-emerald-600 font-black text-[10px] uppercase tracking-[0.3em]">Wawasan Hijau</span>
-                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mt-2 tracking-tighter">Fakta Karbon & Alam</h2>
-            </div>
-            
-            <div class="grid gap-4">
-                <template x-for="(fakta, index) in [
-                    {q: 'Apa itu Jejak Karbon?', a: 'Jejak karbon adalah total emisi gas rumah kaca yang dihasilkan oleh aktivitas kita sehari-hari.', grad: 'hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50', dot: 'bg-emerald-400'},
-                    {q: 'Berapa CO2 diserap satu pohon?', a: 'Satu pohon dewasa mampu menyerap rata-rata 22kg CO2 dari atmosfer setiap tahunnya.', grad: 'hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50', dot: 'bg-blue-400'},
-                    {q: 'Penyumbang terbesar emisi?', a: 'Sektor energi dan industri menyumbang sekitar 75% emisi global saat ini.', grad: 'hover:bg-gradient-to-r hover:from-amber-50 hover:to-orange-50', dot: 'bg-amber-400'},
-                    {q: 'Dampak diet daging sapi?', a: 'Produksi 1kg daging sapi menghasilkan emisi setara dengan berkendara sejauh 100km.', grad: 'hover:bg-gradient-to-r hover:from-rose-50 hover:to-red-50', dot: 'bg-rose-400'},
-                    {q: 'Lautan sebagai penyerap?', a: 'Lautan menyerap sekitar 30% CO2 manusia, namun ini meningkatkan keasaman air laut.', grad: 'hover:bg-gradient-to-r hover:from-cyan-50 hover:to-sky-50', dot: 'bg-cyan-400'},
-                    {q: 'Fakta emisi dari email?', a: 'Menghapus email sampah dapat mengurangi beban server yang membutuhkan energi listrik besar.', grad: 'hover:bg-gradient-to-r hover:from-slate-100 hover:to-slate-50', dot: 'bg-slate-400'},
-                    {q: 'Transportasi udara?', a: 'Satu penerbangan lintas benua menghasilkan emisi lebih besar dari penggunaan mobil selama setahun.', grad: 'hover:bg-gradient-to-r hover:from-violet-50 hover:to-purple-50', dot: 'bg-violet-400'},
-                    {q: 'Kekuatan Hutan Amazon?', a: 'Amazon menyimpan cadangan karbon yang setara dengan 10 tahun emisi manusia di seluruh dunia.', grad: 'hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50', dot: 'bg-green-500'},
-                    {q: 'Plastik dan Jejak Karbon?', a: 'Plastik terbuat dari minyak bumi; proses produksinya melepaskan karbon dalam jumlah masif.', grad: 'hover:bg-gradient-to-r hover:from-orange-50 hover:to-yellow-50', dot: 'bg-orange-400'},
-                    {q: 'Hebatnya Ekosistem Mangrove?', a: 'Mangrove menyimpan karbon 4x lebih efisien daripada hutan tropis biasa di daratan.', grad: 'hover:bg-gradient-to-r hover:from-teal-50 hover:to-green-50', dot: 'bg-teal-500'}
-                ]" :key="index">
-                    <div class="group rounded-[1.8rem] transition-all duration-500 overflow-hidden border border-white bg-white/60 backdrop-blur-sm"
-                         :class="active === index ? 'shadow-lg' : 'shadow-sm'">
-                        <button @click="active !== index ? active = index : active = null" 
-                                class="w-full p-7 text-left flex justify-between items-center transition-all"
-                                :class="active === index ? fakta.grad : 'hover:bg-white'">
-                            <span class="font-bold text-slate-700 flex items-center gap-4">
-                                <span class="w-2 h-2 rounded-full shadow-sm" :class="fakta.dot"></span>
-                                <span x-text="fakta.q"></span>
-                            </span>
-                            <div class="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shrink-0"
-                                 :class="active === index ? 'bg-slate-800 text-white rotate-[135deg]' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'">
-                                <i class="fas fa-plus text-[10px]"></i>
-                            </div>
-                        </button>
-                        <div x-show="active === index" x-collapse x-cloak>
-                            <div class="px-10 pb-8 text-slate-500 leading-relaxed font-medium">
-                                <div class="h-px w-12 bg-slate-200 mb-6"></div>
-                                <p x-text="fakta.a" class="text-[15px]"></p>
-                            </div>
-                        </div>
-                    </div>
-                </template>
-            </div>
-        </div>
-    </section>
+    
 
     <section id="dampak" class="py-24 px-6 md:px-24">
         <div class="max-w-6xl mx-auto">
@@ -160,11 +160,63 @@
         </div>
     </section>
 
-     <section id="tentang" class="py-24 px-6 md:px-24">
+    <section id="edukasi" class="py-24 px-6 md:px-24">
+        <div class="max-w-4xl mx-auto" x-data="{ active: null }">
+            <div class="text-center mb-16">
+                <span class="text-emerald-600 font-black text-[10px] uppercase tracking-[0.3em]">Wawasan Hijau</span>
+                <h2 class="text-3xl md:text-4xl font-black text-slate-800 mt-2 tracking-tighter">Fakta Karbon & Alam</h2>
+            </div>
+
+            <div class="grid gap-4">
+                <template x-for="(fakta, index) in [
+                    {q: 'Apa itu Jejak Karbon?', a: 'Jejak karbon adalah total emisi gas rumah kaca yang dihasilkan oleh aktivitas kita sehari-hari.', icon: 'fa-shoe-prints', color: 'text-emerald-500', bg: 'bg-emerald-50'},
+                    {q: 'Berapa CO2 diserap satu pohon?', a: 'Satu pohon dewasa mampu menyerap rata-rata 22kg CO2 dari atmosfer setiap tahunnya.', icon: 'fa-tree', color: 'text-blue-500', bg: 'bg-blue-50'},
+                    {q: 'Penyumbang terbesar emisi?', a: 'Sektor energi dan industri menyumbang sekitar 75% emisi global saat ini.', icon: 'fa-industry', color: 'text-amber-500', bg: 'bg-amber-50'},
+                    {q: 'Dampak diet daging sapi?', a: 'Produksi 1kg daging sapi menghasilkan emisi setara dengan berkendara sejauh 100km.', icon: 'fa-utensils', color: 'text-rose-500', bg: 'bg-rose-50'},
+                    {q: 'Lautan sebagai penyerap?', a: 'Lautan menyerap sekitar 30% CO2 manusia, namun ini meningkatkan keasaman air laut.', icon: 'fa-water', color: 'text-cyan-500', bg: 'bg-cyan-50'},
+                    {q: 'Fakta emisi dari email?', a: 'Menghapus email sampah dapat mengurangi beban server yang membutuhkan energi listrik besar.', icon: 'fa-envelope', color: 'text-slate-500', bg: 'bg-slate-50'},
+                    {q: 'Transportasi udara?', a: 'Satu penerbangan lintas benua menghasilkan emisi lebih besar dari penggunaan mobil selama setahun.', icon: 'fa-plane', color: 'text-violet-500', bg: 'bg-violet-50'},
+                    {q: 'Kekuatan Hutan Amazon?', a: 'Amazon menyimpan cadangan karbon yang setara dengan 10 tahun emisi manusia di seluruh dunia.', icon: 'fa-leaf', color: 'text-green-600', bg: 'bg-green-50'},
+                    {q: 'Plastik dan Jejak Karbon?', a: 'Plastik terbuat dari minyak bumi; proses produksinya melepaskan karbon dalam jumlah masif.', icon: 'fa-recycle', color: 'text-orange-500', bg: 'bg-orange-50'},
+                    {q: 'Hebatnya Ekosistem Mangrove?', a: 'Mangrove menyimpan karbon 4x lebih efisien daripada hutan tropis biasa di daratan.', icon: 'fa-anchor', color: 'text-teal-600', bg: 'bg-teal-50'}
+                ]" :key="index">
+                    <div class="group rounded-[1.5rem] transition-all duration-300 overflow-hidden border border-slate-100 bg-white/60 backdrop-blur-md shadow-[0_4px_20px_-10px_rgba(0,0,0,0.1)] hover:shadow-[0_8px_30px_-10px_rgba(0,0,0,0.15)]">
+                        <button @click="active !== index ? active = index : active = null" 
+                                class="w-full p-6 text-left flex justify-between items-center transition-all duration-300"
+                                :class="active === index ? fakta.bg : 'hover:bg-slate-50'">
+                            
+                            <span class="font-bold text-slate-700 flex items-center gap-5">
+                                <span class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center border border-slate-100" :class="fakta.color">
+                                    <i class="fas" :class="fakta.icon"></i>
+                                </span>
+                                <span class="text-lg tracking-tight" x-text="fakta.q"></span>
+                            </span>
+
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-500 shrink-0"
+                                :class="active === index ? 'rotate-[135deg] bg-slate-800 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'">
+                                <i class="fas fa-plus text-[12px]"></i>
+                            </div>
+                        </button>
+                        
+                        <div x-show="active === index" x-collapse x-cloak>
+                            <div class="px-6 pb-8 pt-2 text-slate-500 leading-relaxed font-medium">
+                                <p class="pl-[72px] text-[15px] italic border-l-2 border-slate-200" x-text="fakta.a"></p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+
+
+    <section id="tentang" class="py-24 px-6 md:px-24">
         <div class="max-w-5xl mx-auto">
             <div class="fancy-frame p-8 md:p-16 grid md:grid-cols-2 gap-12 items-center shadow-2xl shadow-emerald-100/50">
-                
+
                 <div>
+
+
                     <div class="inline-block p-3 bg-emerald-50 text-emerald-600 rounded-2xl mb-6 shadow-sm">
                         <i class="fas fa-quote-left"></i>
                     </div>
@@ -174,28 +226,24 @@
                     <p class="text-slate-500 leading-relaxed mb-8 font-medium">
                         Kami adalah kolektif pencinta alam yang berdedikasi untuk memberikan edukasi karbon yang mudah diakses. Misi kami adalah mengubah angka emisi yang rumit menjadi aksi nyata yang sederhana bagi semua orang.
                     </p>
-                    
-                    
+
                 </div>
 
                 <div class="relative group">
                     <div class="absolute -top-4 -right-4 w-24 h-24 bg-emerald-100 rounded-full blur-2xl opacity-60"></div>
                     <div class="absolute -bottom-4 -left-4 w-24 h-24 bg-blue-100 rounded-full blur-2xl opacity-60"></div>
-                    
-                    <div class="relative overflow-hidden rounded-[2.5rem] border-4 border-white shadow-2xl transform transition-transform duration-500 group-hover:scale-[1.02]">
+
+                    <div class="relative w-full h-[350px] overflow-hidden rounded-[2.5rem] border-4 border-white shadow-2xl transition-transform duration-500 group-hover:scale-[1.02]">
                         <img src="https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?auto=format&fit=crop&q=80&w=800" 
-                             alt="Green nature" 
-                             class="w-full h-[350px] object-cover">
-                        <div class="absolute inset-0 bg-gradient-to-t from-emerald-900/40 to-transparent"></div>
+                            alt="Green nature" 
+                            class="w-full h-full object-cover block"> <div class="absolute inset-0 bg-gradient-to-t from-emerald-900/40 to-transparent"></div>
                     </div>
                 </div>
 
             </div>
         </div>
     </section>
-
-
-
+    
 
     <footer class="py-16 text-center text-slate-400 text-[10px] font-bold uppercase tracking-[0.4em]">
         © 2026 Potato — One step closer to a greener sky.
